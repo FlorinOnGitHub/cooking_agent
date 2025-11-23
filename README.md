@@ -5,12 +5,12 @@ An intelligent culinary assistant powered by Google Gemini 2.5 Flash and DuckDuc
 
 Unlike standard chatbots that hallucinate recipes, this agent performs real-time web scraping to find authentic recipes and cooking techniques. It uses a Function Calling architecture to research methods before synthesizing a final "Master Recipe."
 
-This is just the beginning of my personal project where I will learn how to build with AI Agents and experiment with LLMs.
+This is just the beginning of my personal project where I will learn how to build AI Agents and experiment with LLMs. Currently, the agent is limited in tool use, I will add more as I get more ideas.
 In the next iteration, I will experiment with different design paradigms for agent architecture, and create a better front-end for the application(currently text-based).
 
 ## Features
 
-Agentic Workflow: Uses a "Tool Use" loop to decide when to search and when to write.
+Agentic Workflow: Function Calling architecture
 
 Real-Time Web Scraping: Fetches live data using DuckDuckGo and Trafilatura (no stale data).
 
@@ -30,6 +30,7 @@ Scraping: Trafilatura & Requests
 
 Environment: Python 3.13
 
+Markdown Rendering: Rich
 
 ▶️ Usage
 
@@ -37,12 +38,11 @@ Run the main agent loop:
 
 python main.py
 
-
 Example Interaction:
 
 User: I have some leftover chicken and heavy cream. What can I make?
 
-Agent: Searches web for "chicken heavy cream recipes"...
+Agent: Searching the web for recipes.....
 
 Agent: I found a great recipe for Creamy Garlic Chicken. Would you like the full recipe or just the shopping list?
 
