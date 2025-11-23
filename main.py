@@ -59,9 +59,9 @@ def main():
 
     console.print(Markdown("## Welcome to your personal cooking agent!"))
     console.print(Markdown("If you wish to close the chat, type 'exit'"))
+    console.print(Markdown("\n# What are you craving?"))
     while True:
 
-        console.print(Markdown("Ask me anything"))
         user_prompt = input()
 
         if user_prompt == "exit":
