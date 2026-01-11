@@ -1,16 +1,21 @@
-# Cooking Agent
+# Cooking Agent V1.2
 
 
 An intelligent culinary assistant powered by Google Gemini 2.5 Flash and DuckDuckGo Search.
 
-Unlike standard chatbots that hallucinate recipes, this agent performs real-time web scraping to find authentic recipes and cooking techniques. It uses a Function Calling architecture to research methods before synthesizing a final "Master Recipe."
+Unlike standard chatbots that hallucinate recipes, this agent performs real-time web scraping to find authentic recipes and cooking techniques. It is built with MCP architecture for easy interoperability
+
 
 This is just the beginning of my personal project where I will learn how to build AI Agents and experiment with LLMs. Currently, the agent is limited in tool use, I will add more as I get more ideas.
-In the next iteration, I will experiment with different design paradigms for agent architecture, and create a better front-end for the application(currently text-based).
+
+
+For this second iteration, i have switch the architecture from FunctionCalling to MCP, as I find it an important next step in my learning process.
+ 
+In the next iteration, I will switch the framework to LangGraph to allow for other types of models(currently only Gemini Is supported) and to learn the framework. A better front-end for the application(currently text-based) is still needed. 
 
 ## Features
 
-Agentic Workflow: Function Calling architecture
+Agentic Workflow: MCP architecture
 
 Real-Time Web Scraping: Fetches live data using DuckDuckGo and Trafilatura (no stale data).
 
@@ -22,7 +27,9 @@ Grounded Generation: Forces the LLM to use scraped data for generation to reduce
 
 ## Tech Stack
 
-LLM: Google Gemini (via google-genai SDK)
+LLM: Google Gemini (via Google ADK)
+
+MCP Server: FastMCP
 
 Search: DuckDuckGo Search (duckduckgo_search)
 
@@ -34,15 +41,18 @@ Markdown Rendering: Rich
 
 ▶️ Usage
 
-Run the main agent loop:
+1. First run the server:
 
+```
+python server.py
+```
+
+2. In a separate terminal, run the main agent loop:
+
+```
 python main.py
+```
 
-Example Interaction:
-
-User: I have some leftover chicken and heavy cream. What can I make?
-
-Agent: Searching the web for recipes.....
-
-Agent: I found a great recipe for Creamy Garlic Chicken. Would you like the full recipe or just the shopping list?
+Now all that is left is to get cooking!
+Eet Smakelijk!
 

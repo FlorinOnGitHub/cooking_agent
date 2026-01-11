@@ -1,22 +1,38 @@
-from functions.online_search import online_search
 from google.genai import types
 
 
 
-def search_for_techniques(client,query):
+
+def summarize_recipes(client, recipes):
     '''
-    Search the internet for relevant cooking techniques and outputs a formated list
+    Summarize and cleans recipe data to pass to main agent. Uses an additional API call, but it greatly reduces required context.
 
     Args:
         client: initialized Client to talk with Gemini
-        query: internet query string
+        recipes: raw recipe data from web scraper:
     Returns:
-        recipes: string containing all the techniques without the errors.
+        cleaned and summarized recipes.
     '''
-    raw_techniques = online_search(query)
-    techniques = summarize_techniques(client,raw_techniques)
-    return techniques
 
+    SYSTEM_PROMPT = """
+You are an expert data cleaning agent. Your task is to extract and sanitize recipe data from raw web-scraped text.
+Input: A raw string of text containing content from multiple websites.
+Instructions:
+    Identify Valid Recipes: A valid recipe MUST contain three elements: a Title, an Ingredients List, and
+    Preparation Steps. Discard any text that does not meet these criteria.
+    Filter Noise: Aggressively remove all:
+        Navigation menus, footers, and sidebar content.
+        'Access Denied', '403 Forbidden', or 'Captcha' error messages.
+        SEO-driven blog narratives, personal stories, or lengthy introductions.
+        Advertisements and promotional redirects.
+    Format: Return the data as a clean Markdown list. Use ## for the Recipe Title, - for Ingredients, and 1. for Steps.
+Constraint: If a extracted segment is a partial recipe or an error message, output nothing for that segment. Do not include any conversational text, 
+preambles, or summaries. Just the structured data) """
+    response = client.models.generate_content(
+        model = "gemini-2.5-flash-lite", contents = recipes,
+        config = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT)
+    )
+    return response.text
 
 
 def summarize_techniques(client, techniques):
@@ -45,22 +61,7 @@ Instructions:
 Constraint: If a extracted segment is a partial recipe or an error message, output nothing for that segment. Do not include any conversational text,
 preambles, or summaries. Just the structured data) """
     response = client.models.generate_content(
-        model = "gemini-2.5-flash", contents = techniques,
+        model = "gemini-2.5-flash-lite", contents = techniques,
         config = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT)
     )
     return response.text
-
-schema_search_for_techniques = types.FunctionDeclaration(
-    name="search_for_techniques",
-    description="Search the web for multiple techniques that can help in giving detailed instructions for a specific recipe or ingredient",
-    parameters =types.Schema(
-        type = types.Type.OBJECT,
-        properties = {
-            "query" : types.Schema(
-                type = types.Type.STRING,
-                description= "Query technique to search the internet for"
-
-            )
-        }
-    )
-)
