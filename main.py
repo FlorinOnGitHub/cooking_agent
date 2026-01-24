@@ -1,72 +1,50 @@
 import asyncio
-from google import genai
-import os
 from dotenv import load_dotenv
-from google.genai import types
-from mcp import StdioServerParameters
-from rich.console import Console
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_core.messages import HumanMessage
+from agent import CookingAgent
 from rich.markdown import Markdown
-from dotenv import load_dotenv
-import sys
-from google.adk.tools.mcp_tool.mcp_session_manager import SseConnectionParams
-from google.adk.agents import LlmAgent
-from google.adk.tools.mcp_tool import MCPToolset
-from google.adk.runners import InMemoryRunner
-
+from rich.console import Console
 
 load_dotenv()
 
-SYSTEM_PROMPT = """
-You are a master culinary agent and expert food scientist. Your goal is to provide detailed, scientifically accurate 
-recipes and cooking guides.
-
-### WORKFLOW STRATEGY
-1. **Never Guess:** Do not generate recipes from latent memory. Always use your
-     search tools to find authentic sources first.
-2. **Refine Queries:** When using search tools, never pass raw user chat. Convert requests into
-     high-quality search engine keywords (e.g., "best authentic [dish] technique").
-3. **Synthesize:** When you have gathered enough information, combine the best parts of 
-    multiple sources into a single, cohesive guide.
-
-### TONE
-Professional, encouraging, and focused on culinary technique/science.
-"""
-
-
 async def main():
-    """
-    Main loop that records messages and calls tools.
-    """
+
+    client = MultiServerMCPClient({
+        "localhost": {
+            "url": "http://localhost:8000/sse",
+            "transport": "sse"
+        }
+    })
+
+    tools = await client.get_tools()
 
     console = Console()
-
-    connection_params = SseConnectionParams(url="http://localhost:8000/sse")
-
-    # 4. Initialize the Toolset
-    # Note: This is now a SINGLE object, not a list of tools yet.
-    mcp_tools = MCPToolset(connection_params=connection_params)
-    client = LlmAgent(
-        name = "cooking_agent",
-        model = "gemini-2.5-flash",
-        tools = [mcp_tools],
-        instruction=SYSTEM_PROMPT
-    )
-
-
-    runner = InMemoryRunner(agent=client)
-
+    bot = CookingAgent(tools)
+    config = {
+        "configurable": {"thread_id": "session_1"},
+        "recursion_limit": 10
+        }
     console.print(Markdown("## Welcome to your personal cooking agent!"))
     console.print(Markdown("If you wish to close the chat, type 'exit'"))
     console.print(Markdown("\n# What are you craving?"))
-    while True:
 
-        user_prompt = await asyncio.to_thread(input, ">> ")
-        if user_prompt == "exit":
+    while True:
+        user_input = input("[USER]")
+        if user_input.lower() in ["quit", "exit"]:
             break
 
-        response = await runner.run_debug(user_prompt,quiet=True)
+        inputs = {"messages": [HumanMessage(content=user_input)]}
 
-        console.print(Markdown(response[-1].content.parts[-1].text))
+        # Run the agent
+        async for event in bot.graph.astream(inputs, config=config, stream_mode="values"):
+            message = event["messages"][-1]
+            if message.type == "ai":
+                console.print(Markdown("[POCKET GORDON RAMSAY]"))
+                console.print(Markdown(message.content))
+
+        console.print("\n")
+        console.print(Markdown("Anything else I can help you with"))
 
 if __name__ == "__main__":
     asyncio.run(main())
