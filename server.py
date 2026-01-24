@@ -1,21 +1,23 @@
-from google.genai import types
+
 from fastmcp import FastMCP
 from typing import Annotated
-from google import genai
-import os
-
+from langchain_huggingface import HuggingFacePipeline, ChatHuggingFace
+from transformers import AutoTokenizer, pipeline, BitsAndBytesConfig, AutoModelForCausalLM
 from utils.online_search import online_search
 from utils.summarize_subagents import summarize_recipes, summarize_techniques
-
-
+from langchain.chat_models import init_chat_model
 mcp = FastMCP(name="Recipes Server")
 
-API_KEY = os.environ.get("GEMINI_API_KEY")
-client = genai.Client(api_key=API_KEY)
+# Initialize summarizer_model
 
-mcp.run(transport="sse")
 
-@mcp.prompt
+client = init_chat_model(
+    "gemini-3-flash-preview",
+    model_provider="google_genai",
+    max_tokens = 1000
+)
+
+@mcp.prompt()
 def make_recipe(
     techniques: Annotated[str,"string containing techniques found online"],
     found_recipe_text: Annotated[str, "initial recipe found from scariping"],
@@ -43,22 +45,27 @@ def make_recipe(
 
 
 
-@mcp.tool
+@mcp.tool()
 def search_for_recipes(query: Annotated[str,"User recipe query to search the internet with"]):
     '''
     Search the web for a list of recipes given the specified prompt and will return al the recipes
     '''
+    print("searching for recipes")
     raw_recipes = online_search(query)
     recipes = summarize_recipes(client,raw_recipes)
     return recipes
 
 
-@mcp.tool
+@mcp.tool()
 def search_for_techniques(query: Annotated[str,"User techniques query to search the internet with"]):
     '''
     Search the web for multiple techniques that can help in giving detailed instructions for a specific recipe or ingredient
     and return a formated list
     '''
+    print("searching for techiques")
     raw_techniques = online_search(query)
     techniques = summarize_techniques(client,raw_techniques)
     return techniques
+
+if __name__ == "__main__":
+    mcp.run(transport="sse")

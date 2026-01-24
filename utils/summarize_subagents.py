@@ -1,5 +1,5 @@
-from google.genai import types
-
+from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 
 
@@ -28,11 +28,11 @@ Instructions:
     Format: Return the data as a clean Markdown list. Use ## for the Recipe Title, - for Ingredients, and 1. for Steps.
 Constraint: If a extracted segment is a partial recipe or an error message, output nothing for that segment. Do not include any conversational text, 
 preambles, or summaries. Just the structured data) """
-    response = client.models.generate_content(
-        model = "gemini-2.5-flash-lite", contents = recipes,
-        config = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT)
-    )
-    return response.text
+    chat = [
+        HumanMessage( SYSTEM_PROMPT + "\n\n" + recipes)
+    ]
+    output = client.invoke(chat)
+    return output
 
 
 def summarize_techniques(client, techniques):
@@ -60,8 +60,9 @@ Instructions:
     Format: Return the data as a text list of instructions. Format it in such a way that it will be clear to an LLM that these are techniques.
 Constraint: If a extracted segment is a partial recipe or an error message, output nothing for that segment. Do not include any conversational text,
 preambles, or summaries. Just the structured data) """
-    response = client.models.generate_content(
-        model = "gemini-2.5-flash-lite", contents = techniques,
-        config = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT)
-    )
-    return response.text
+    chat = [
+        HumanMessage( SYSTEM_PROMPT + "\n\n" + techniques)
+    ]
+    output = client.invoke(chat)
+    return output.text()
+    

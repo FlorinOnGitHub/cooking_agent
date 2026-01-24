@@ -2,7 +2,7 @@ from ddgs import DDGS
 import requests
 import trafilatura
 
-def online_search(query,max_results = 10):
+def online_search(query,max_results = 3):
     '''
     Search using DuckDuckGo for the most relevant links related to the query
     Args:
