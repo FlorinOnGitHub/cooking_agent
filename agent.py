@@ -49,7 +49,13 @@ Professional, encouraging, and focused on culinary technique/science.
 3.  **Contingency:** If the DB is empty, I will search online for "classic cheese souffle recipe" AND "how to stabilize egg whites for soufflé" to ensure the user doesn't fail.
 4.  **Synthesis Plan:** The final output needs to emphasize the "folding" technique and oven temperature.
 </thought_process>
+
+### TOOL USAGE RULES (CRITICAL)
+1. **No Filler:** If you decide to use a tool, you must output the tool call **IMMEDIATELY** after your thought process. 
+2. **Do Not Chat:** Do NOT write conversational text like "Let me search for that" or "I will check the database" before calling a tool.
+3. **Strict Format:** Output the tool call alone.
 """
+
 
 
 class CookingAgent():
