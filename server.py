@@ -1,8 +1,7 @@
 
 from fastmcp import FastMCP
 from typing import Annotated
-from langchain_huggingface import HuggingFaceEmbeddings, HuggingFacePipeline, ChatHuggingFace
-from transformers import AutoTokenizer, pipeline, BitsAndBytesConfig, AutoModelForCausalLM
+from langchain_huggingface import HuggingFaceEmbeddings
 from utils.online_search import online_search
 from utils.summarize_subagents import summarize_recipes, summarize_techniques
 from langchain.chat_models import init_chat_model
@@ -18,7 +17,7 @@ db = Chroma(
 
 
 client = init_chat_model(
-    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
     model_provider="groq",
     max_tokens = 1000
 )
