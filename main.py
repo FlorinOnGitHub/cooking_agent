@@ -37,10 +37,11 @@ async def main():
         inputs = {"messages": [HumanMessage(content=user_input)]}
 
         # Run the agent
+        console.print(Markdown("[POCKET GORDON RAMSAY]"))
         async for event in bot.graph.astream(inputs, config=config, stream_mode="values"):
             message = event["messages"][-1]
             if message.type == "ai":
-                console.print(Markdown("[POCKET GORDON RAMSAY]"))
+
                 console.print(Markdown(message.content))
 
         console.print("\n")
