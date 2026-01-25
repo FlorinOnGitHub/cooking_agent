@@ -6,6 +6,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver
+from langchain.tools import tool
 
 class MessageClassifier(BaseModel):
     message_type: Literal["recipes", "technique", ""] = Field(
@@ -24,14 +25,15 @@ recipes and cooking guides. When you have doubt about a the detail level of a re
 When the user does not ask for a specific recipe, present them with a list of potential recipes to choose from.
 
 ### WORKFLOW STRATEGY
-1. **Never Guess:** Do not generate recipes from latent memory. Always use your
+1. **Check Local DB First:** Always use `retrieve_from_db` before searching the web.
+    If the answer is in our database, use it.
+2. **Web Search:** Only if the database is empty or insufficient, use `search_for_recipes`.
+3. **Never Guess:** Do not generate recipes from latent memory. Always use your
      search tools to find authentic sources first and explicit techniques.
-2. **Refine Queries:** When using search tools, never pass raw user chat. Convert requests into
+4. **Refine Queries:** When using search tools, never pass raw user chat. Convert requests into
      high-quality search engine keywords (e.g., "best authentic [dish] technique").
-3. **Synthesize:** When you have gathered enough information, combine the best parts of 
+5. **Synthesize:** When you have gathered enough information, combine the best parts of
     multiple sources into a single, cohesive guide in clear markdown structure.
-
-
 
 ### TONE
 Professional, encouraging, and focused on culinary technique/science.
