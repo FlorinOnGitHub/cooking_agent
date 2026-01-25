@@ -6,13 +6,11 @@ from utils.online_search import online_search
 from utils.summarize_subagents import summarize_recipes, summarize_techniques
 from langchain.chat_models import init_chat_model
 mcp = FastMCP(name="Recipes Server")
-from langchain_chroma import Chroma
+import chromadb
 
 embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-db = Chroma(
-    persist_directory="cookbook_db",
-    collection_name="recipes",
-    embedding_function=embedding_model
+db = chromadb.PersistentClient(
+    path="cookbook_db"
 )
 
 
@@ -22,31 +20,7 @@ client = init_chat_model(
     max_tokens = 1000
 )
 
-# @mcp.prompt()
-# def make_recipe(
-#     techniques: Annotated[str,"string containing techniques found online"],
-#     found_recipe_text: Annotated[str, "initial recipe found from scariping"],
-#     dish_name: Annotated[str,"dish that the user requested the recipe for"]):
-#     '''
-#     Generates the final output. Use this ONLY after you have successfully found recipe data and techniques from the other tools.
-#     '''
 
-#     return f"""
-#     SUCCESS: Data Gathered.
-#     DISH: {dish_name}
-#     SOURCE RECIPE DATA:
-#     {found_recipe_text}
-
-#     SOURCE TECHNIQUE DATA:
-#     {techniques}
-
-#     INSTRUCTIONS FOR AGENT:
-#     Please combine the Source Recipe Data with the Source Technique Data.
-#     Create a 'Master Recipe' in Markdown format.
-#     1. Start with a catchy title.
-#     2. List Ingredients.
-#     3. Write detailed Instructions, incorporating the specific techniques (explain 'WHY' we do each step). Do not forget to add cooking times.
-#     """
 
 @mcp.tool()
 def retrieve_from_db(query: Annotated[str,"Recipe query to search the local database"]):
