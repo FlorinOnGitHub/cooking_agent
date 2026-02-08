@@ -1,4 +1,5 @@
 import asyncio
+import sys
 from dotenv import load_dotenv
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_core.messages import HumanMessage
@@ -7,6 +8,15 @@ from rich.markdown import Markdown
 from rich.console import Console
 
 load_dotenv()
+
+async def show_spinner():
+    spinner = ['|', '/', '-', '\\']
+    while True:
+        for symbol in spinner:
+            sys.stdout.flush()
+            sys.stdout.write(f"\rAgent is thinking... {symbol}")
+            sys.stdout.flush()
+            await asyncio.sleep(0.1)
 
 async def main():
 
@@ -18,7 +28,6 @@ async def main():
     })
 
     tools = await client.get_tools()
-
     console = Console()
     bot = CookingAgent(tools)
     config = {
@@ -38,10 +47,11 @@ async def main():
 
         # Run the agent
         console.print(Markdown("[POCKET GORDON RAMSAY]"))
+        spinner_task = asyncio.create_task(show_spinner())
         async for event in bot.graph.astream(inputs, config=config, stream_mode="values"):
             message = event["messages"][-1]
             if message.type == "ai":
-
+                spinner_task.cancel()
                 console.print(Markdown(message.content))
 
         console.print("\n")
