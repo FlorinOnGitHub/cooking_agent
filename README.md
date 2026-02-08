@@ -1,43 +1,49 @@
-# Cooking Agent V1.2
+# Cooking Agent V1.3
 
 
-An intelligent culinary assistant powered by Google Gemini 2.5 Flash and DuckDuckGo Search.
+An intelligent culinary assistant powered by LangGraph and DuckDuckGo Search.
 
-Unlike standard chatbots that hallucinate recipes, this agent performs real-time web scraping to find authentic recipes and cooking techniques. It is built with MCP architecture for easy interoperability
+Unlike standard chatbots that hallucinate recipes, this agent performs recipe retrieval real-time web scraping to find authentic recipes and cooking techniques. It is built with MCP architecture for easy interoperability
 
 
 This is just the beginning of my personal project where I will learn how to build AI Agents and experiment with LLMs. Currently, the agent is limited in tool use, I will add more as I get more ideas.
 
 
-For this second iteration, i have switch the architecture from FunctionCalling to MCP, as I find it an important next step in my learning process.
- 
-In the next iteration, I will switch the framework to LangGraph to allow for other types of models(currently only Gemini Is supported) and to learn the framework. A better front-end for the application(currently text-based) is still needed. 
+For this third iteration, I implemented the agentic logic in LangGraph and added a Vector Database of cookbooks I found online.
+
+In the next iteration, I will deploy the agent to cloud alognside proper session management for multiple users.
 
 ## Features
 
-Agentic Workflow: MCP architecture
+**Agentic Workflow**: Main Agent that takes decisions based on gathered data.
 
-Real-Time Web Scraping: Fetches live data using DuckDuckGo and Trafilatura (no stale data).
+**Real-Time Web Scraping**: Fetches live data using DuckDuckGo and Trafilatura (no stale data).
 
-Smart Filtering: Automatically strips ads, blog fluff, and SEO narratives from recipe sites.
+**Vector Database**: Chroma DB
 
-Technique Research: Can research "food science" questions (e.g., Why is my steak tough?) separately from recipe ingredients.
+**Chunking**: Documents are chunked either based on headers or pages, according to their structure (cooking books have some structure that can be taken advantage of)
 
-Grounded Generation: Forces the LLM to use scraped data for generation to reduce hallucinations.
+**Smart Filtering**: Automatically strips ads, blog fluff, and SEO narratives from recipe sites.
+
+**Technique Research**: Can research "food science" questions (e.g., Why is my steak tough?) separately from recipe ingredients.
+
+**Grounded Generation**: Forces the LLM to use scraped data for generation to reduce hallucinations.
 
 ## Tech Stack
 
-LLM: Google Gemini (via Google ADK)
+**LLM**: Google Gemini 2.5 Flash
 
-MCP Server: FastMCP
+**MCP Server**: FastMCP
 
-Search: DuckDuckGo Search (duckduckgo_search)
+**Search** DuckDuckGo Search (duckduckgo_search)
 
-Scraping: Trafilatura & Requests
+**Vector Database**: ChromaDB
 
-Environment: Python 3.13
+**Scraping**: Trafilatura & Requests
 
-Markdown Rendering: Rich
+**Environment**: Python 3.13
+
+**Markdown** Rendering: Rich
 
 ▶️ Usage
 
