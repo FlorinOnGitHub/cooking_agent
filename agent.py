@@ -65,8 +65,8 @@ class CookingAgent():
     def __init__(self, tools):
         # Initialize LLM
         llm = init_chat_model(
-            "llama-3.3-70b-versatile",
-            model_provider="groq"
+            "gemini-2.5-flash",
+            model_provider="google_genai"
         )
         self.llm = llm.bind_tools(tools)
         self.tools_map = {t.name: t for t in tools}
@@ -89,6 +89,27 @@ class CookingAgent():
         memory_saver = MemorySaver()
         self.graph = graph_builder.compile(checkpointer=memory_saver)
 
+    def get_clean_content(self,message):
+        '''
+        Get the content of the message.
+        '''
+        content = message.content
+        if isinstance(content,list):
+            text = [block["text"] for block in content if "text" in block]
+            raw_text = "".join(text)
+
+        elif isinstance(content,str):
+            raw_text = content
+
+        clean_text = re.sub(
+            r'<thought_process>.*?</thought_process>',
+                '',
+                raw_text,
+                flags=re.DOTALL
+        ).strip()
+
+        return clean_text
+
     async def llm_call(self, state: State):
         """
         Main Agent Node: Decides whether to act or answer.
@@ -101,7 +122,6 @@ class CookingAgent():
         messages = [SystemMessage(content=SYSTEM_PROMPT)] + state["messages"] + current_scratchpad
 
         response = await self.llm.ainvoke(messages)
-
         # CASE A: The agent wants to use a Tool
         if response.tool_calls:
             return {"scratchpad": current_scratchpad + [response]}
@@ -109,13 +129,7 @@ class CookingAgent():
         # CASE B: The agent is ready to answer the user (Final Output)
         else:
             # 1. Clean the output: Remove <thought_process> tags
-            clean_content = re.sub(
-                r'<thought_process>.*?</thought_process>', 
-                '',
-                response.content, 
-                flags=re.DOTALL
-            ).strip()
-
+            clean_content = self.get_clean_content(response)
             return {
                 "messages": [AIMessage(content=clean_content)],
                 "scratchpad": [] 
