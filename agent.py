@@ -77,7 +77,7 @@ class CookingAgent():
 
 
         self.graph = self.build_graph()
-        self.graph.get_graph().draw_mermaid_png(output_file_path="agent.png")
+
 
 
     def get_planner_llm(self,base_llm):
