@@ -10,20 +10,17 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain.tools import tool
 import yaml
 
+# TODO  REMOVE THINKING FROM MODEL OUTPUT.
+# TODO ADD CORRECT CONCATENATION OF RECIPES AND 
 
-def none_add(a, b) :
-
-    if b is not None:
-        return a +b
-    return a
 
 class State(TypedDict):
     messages: Annotated[list, add_messages]
-    recipes: Annotated[list, none_add]
-    techniques: Annotated[list,none_add]
+    recipes: Annotated[list, add]
+    techniques: Annotated[list,add]
     recipe_query: str
     technique_query: str
-    tool_calls : str
+    tool_calls : list
     finished_techniques : bool
     finished_recipes: bool
 
@@ -64,15 +61,15 @@ def load_agent_config(agent_name, yaml_path="agents.yaml"):
 
 class CookingAgent():
     def __init__(self, tools):
-        # Initialize LLM
+        # Initialize base LLM
         self.base_llm = init_chat_model(
-           # "qwen/qwen3-32b",
             "llama-3.3-70b-versatile",
             model_provider="groq",
         )
 
         self.tools_map = {t.name: t for t in tools}
 
+        # Initialize sub-agents llm
         self.planner_llm, self.planner_prompt = self.get_planner_llm(self.base_llm)
         self.technique_llm, self.techniqe_refiner_prompt = self.get_technique_refiner_llm(self.base_llm)
         self.recipe_llm, self.recipe_prompt = self.get_recipe_refiner_llm(self.base_llm)
@@ -106,8 +103,8 @@ class CookingAgent():
 
     def build_graph(self):
         graph_builder = StateGraph(State)
-        graph_builder.add_node("planner", self.planner)
-        graph_builder.add_node("technique_search", self.technique_search)
+        graph_builder.add_node("planner", self.planner) # initial triage node
+        graph_builder.add_node("technique_search", self.technique_search) 
         graph_builder.add_node("technique_refiner", self.techniqe_refiner)
         graph_builder.add_node("recipe_refiner", self.recipe_refiner)
         graph_builder.add_node("tool_executor", self.tool_executor)
@@ -116,6 +113,9 @@ class CookingAgent():
         graph_builder.add_node("aggregator", self.aggregator)
 
         graph_builder.add_edge(START, "planner")
+
+        # Either a recipe is needed or go straight to writer
+        # If needed, first search in database
         graph_builder.add_conditional_edges(
             "planner",
             self.should_start_recipes,
@@ -125,9 +125,10 @@ class CookingAgent():
                 END : END
             }
         )
-
+        # Check recipe quality
         graph_builder.add_edge("database_search", "recipe_refiner")
 
+        # Either recipe is fine, or additional search is needed
         graph_builder.add_conditional_edges(
             "recipe_refiner",
             self.should_continue_recipes,
@@ -136,8 +137,10 @@ class CookingAgent():
                 "Finish Recipe": "aggregator"
                
             }
-           
+
         )
+
+        # Loop back to recipe refiner to check new recipes
         graph_builder.add_edge("tool_executor", "recipe_refiner")
         graph_builder.add_conditional_edges(
             "planner",
@@ -152,6 +155,7 @@ class CookingAgent():
 
         )
 
+        # Check if all paths are finished
         graph_builder.add_conditional_edges(
             "aggregator",
             self.should_start_writing,
@@ -161,8 +165,10 @@ class CookingAgent():
             }
         )
 
+        # There is no technique books in the database, so they are always checked online
         graph_builder.add_edge("technique_search", "technique_refiner")
 
+        # Either techniques are sufficient or search again
         graph_builder.add_conditional_edges(
             "technique_refiner",
             self.should_continue_techniques,
@@ -172,6 +178,7 @@ class CookingAgent():
             }
         )
 
+        # Final writer node.
         graph_builder.add_edge("writer", END)
 
 
@@ -199,7 +206,7 @@ class CookingAgent():
         ).strip()
 
         return clean_text
-    
+
 
 
     async def planner(self,state:State):
@@ -210,14 +217,17 @@ class CookingAgent():
 
         response = await self.planner_llm.ainvoke(messages)
 
+        # Flags that control the refiner loops
         finished_recipes = response.recipe_query is None
         finished_techniques = response.technique_query is None
         return {
-            "messages": state["messages"],
             "recipe_query": response.recipe_query,
             "technique_query": response.technique_query,
             "finished_recipes": finished_recipes,
-            "finished_techniques": finished_techniques
+            "finished_techniques": finished_techniques,
+            "tool_calls": [],
+            "recipes": [],
+            "techniques": []
         }
     
 
@@ -235,8 +245,12 @@ class CookingAgent():
 
 
     async def techniqe_refiner(self,state:State):
-
-        messages = [SystemMessage(content=self.techniqe_refiner_prompt)]
+        """
+        Technique refiner node. This node checks the completeness of the recipes and
+        controls the loop condition.
+        """
+        prompt = self.techniqe_refiner_prompt.replace("{techniques}", str(state["techniques"]))
+        messages = [SystemMessage(content=prompt)]
 
         response = await self.technique_llm.ainvoke(messages)
 
@@ -250,40 +264,42 @@ class CookingAgent():
 
 
     async def database_search(self, state:State):
-
+        """
+        Node to search in the recipe database.
+        """
         tool = self.tools_map["retrieve_from_db"]
         recipe_query = state.get("recipe_query", None)
         if recipe_query == None:
             return state
         tool_output = await tool.ainvoke({"query": recipe_query})
         return {"recipes":  [str(tool_output)]}
-    
+
 
     async def recipe_refiner(self,state:State):
-
-        current_recipes = state.get("recipes")
-        
+        """
+        Recipe refiner node. As with the technique refiner, it decies whether to stop searaching for recipes
+        or to output the final text.
+        """
         current_tool_calls = state.get("tool_calls", [])
-  
-        messages = [SystemMessage(content=self.recipe_prompt + str(current_recipes) + "PAST TOOL CALLS" + str(current_tool_calls))]
+        prompt = self.recipe_prompt.replace("{recipes}", str(state["recipes"]))
+        prompt = prompt.replace("{tool_calls}", str(state["tool_calls"]))
+        messages = [SystemMessage(content=prompt)]
 
         response = await self.recipe_llm.ainvoke(messages)
-        
 
         if response.tool_calls:
             return {
                 "tool_calls" : current_tool_calls + [response],
             }
         else:
-            # 1. Clean the output: Remove <thought_process> tags
             clean_content = self.get_clean_content(response)
             return {
                 "recipes" :  [clean_content],
                 "recipe_query" : None,
-                "tool_calls" : None,
+                "tool_calls" : [],
                 "finished_recipes": True
             }
-        
+
     async def aggregator(self, state:State):
         """
         Aggregator dummy node to check if both paths are finished.
@@ -291,10 +307,12 @@ class CookingAgent():
         return {}
 
     async def should_start_recipes(self,state:State):
-
+        """
+        Checks starting criteria for recipes
+        """
         finished_recipes= state.get("finished_recipes")
         finished_techniques= state.get("finished_techniques")
-    
+
         # Both are empty (User said "Hello") -> Go to Writer to chat
         if finished_recipes and finished_techniques:
             return "Writer"
@@ -304,7 +322,9 @@ class CookingAgent():
 
 
     async def should_start_writing(self,state:State):
-
+        """
+        Checks if both paths are completed before finalizing recipe
+        """
         finished_recipes = state.get("finished_recipes")
         finished_techniques = state.get("finished_techniques")
 
@@ -314,17 +334,21 @@ class CookingAgent():
             return END
 
     async def should_continue_recipes(self,state:State):
-
-        tool_called = state.get("tool_calls", [])
-        if tool_called is not None and len(tool_called) >= 2:
+        """
+        Checks wether the search for recipes is finished
+        """
+        tool_calls = state.get("tool_calls", [])
+        if len(tool_calls) >= 2:
             return "Finish Recipe"
-        if tool_called == None:
+        if len(tool_calls) == 0:
             return "Finish Recipe"
         else:
             return "Search Again"
 
     async def should_continue_techniques(self,state:State):
-
+        """
+        Checks wether the search for techniques is finished
+        """
         if state["finished_techniques"] is True:
             return "Finish Recipe"
         else :
@@ -350,15 +374,17 @@ class CookingAgent():
         """
         Subagent that plans recipe creation
         """
+        prompt = self.writer_prompt.replace("{techniques}" , str(state["techniques"]))
+        prompt = prompt.replace("{recipes}", str(state["recipes"]))
         messages = [SystemMessage(content=self.writer_prompt)] + state["messages"]
 
         response = await self.base_llm.ainvoke(messages)
         message = AIMessage(content=response.content)
         return {
-            "messages": state["messages"] + [message],
+            "messages": messages +  [message],
             "recipe_query": None,
             "technique_query": None,
-            "recipes": None,
-            "techniques": None,
-            "tool_calls": None,
+            "recipes": [],
+            "techniques": [],
+            "tool_calls": [],
         }

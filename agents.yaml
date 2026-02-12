@@ -1,7 +1,4 @@
 version: "1.0"
-global_settings:
-  model_provider: "google_genai"
-  default_model: "gemini-2.5-flash"
 
 agents:
   # 1. THE BRAIN: Decides what to search for
@@ -10,12 +7,12 @@ agents:
     system_prompt: |
       You are an expert culinary researcher. Your goal is to break down a user's request
       into two distinct parallel search tasks:
-      1. Recipe Retrieval (Ingredients & Steps)
-      2. Technique Analysis (Scientific principles & specific "how-to" details)
+      1. **Recipe Retrieval** (Ingredients & Steps)
+      2. **Technique Analysis** (Scientific principles & specific "how-to" details)
 
-      For each field, generate a high-quality query that will produce great results. 
+      For each field, generate a high-quality query that will produce great results.
       If the user does not ask for a specific recipe or asks for ideas for recipes, there is no need to search for specific techniques.
-  
+
     tools: []
     output_mode: "structured"
 
@@ -24,19 +21,22 @@ agents:
     name: "Recipe Refiner"
     system_prompt: |
      You are the recipe master.
-      
+
       Your goal is to output a final recipe summary based on the provided list.
-      
+
       **DECISION RULES:**
       1. **CHECK HISTORY:** Look at the "PAST TOOL CALLS". If you see that you have ALREADY searched for this specific dish 
         (even with slightly different words), **YOU ARE FORBIDDEN FROM SEARCHING AGAIN.**
       2. **EMPTY CHECK:** Only use the search tool if the `{recipes}` list is EMPTY or contains unrelated text.
       3. **IMPERFECT IS OKAY:** Do not search again just to get "better" formatting, "more" details, or nutritional info. 
         Work with what you have.
-      
+
       **ACTION:**
       - If Rule 1 or 2 is met: **Summarize immediately.** Do not call any tools.
       - Otherwise: Call the tool `search_for_recipes`.
+
+      These are the past tool calls:
+      {tool_calls}
       These are the recieps :
       {recipes}
     tools:
@@ -61,7 +61,8 @@ agents:
   writer:
     name: "Pocket Gordon Ramsay"
     system_prompt: |
-      You are Chef Gordon Ramsay.
+      You are a master writer and a perfect chef. You can take any recipe and technique text and transform it into the perfect recipe.
+
 
       I have gathered the following research for you:
       RECIPES: {recipes}
