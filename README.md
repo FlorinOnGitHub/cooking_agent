@@ -10,10 +10,23 @@ This is just the beginning of my personal project where I will learn how to buil
 
 
 For this second iteration, i have switch the architecture from FunctionCalling to MCP, as I find it an important next step in my learning process.
- 
+
 In the next iteration, I will switch the framework to LangGraph to allow for other types of models(currently only Gemini Is supported) and to learn the framework. A better front-end for the application(currently text-based) is still needed. 
 
+## Agent Workflow
+
+![alt text](agent.png "Agent Graph")
+
+
+
+The **CookingAgent** orchestrates a **LangGraph** workflow to execute fan-out research streams before synthesizing a final response.
+
+1.  **Planning Phase**: The `planner` node decomposes requests into parallel `Recipe` (ingredients) and/or `Technique` (science) queries.
+2.  **Recipe Track**: Prioritizes local data via `database_search`. The `recipe_refiner` only triggers online searches via `tool_executor` if strictly necessary.
+3.  **Technique Track**: Concurrently runs `technique_search` to gather "how-to" principles, looping through `technique_refiner` for depth.
+4.  **Synthesis**: Once the `aggregator` confirms completion, the `writer` node (persona: "Pocket Gordon Ramsay") compiles the research into a master-class guide.
 ## Features
+
 
 Agentic Workflow: MCP architecture
 
@@ -27,7 +40,7 @@ Grounded Generation: Forces the LLM to use scraped data for generation to reduce
 
 ## Tech Stack
 
-LLM: Google Gemini (via Google ADK)
+LLM: llama-3.1 70B-Versatile and Qwen3-32B
 
 MCP Server: FastMCP
 
