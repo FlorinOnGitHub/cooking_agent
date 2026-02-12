@@ -1,93 +1,183 @@
 import re
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, TypedDict, Optional
 from pydantic import BaseModel, Field
 from langgraph.graph.message import add_messages
+from operator import add
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage
+from langchain_core.messages import SystemMessage, AIMessage
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver
 from langchain.tools import tool
+import yaml
 
-class MessageClassifier(BaseModel):
-    message_type: Literal["recipes", "technique", ""] = Field(
-        ...,
-        description="Classify if the message requires "
-    )
+
+def none_add(a, b) :
+
+    if b is not None:
+        return a +b
+    return a
 
 class State(TypedDict):
     messages: Annotated[list, add_messages]
-    scratchpad: list
+    recipes: Annotated[list, none_add]
+    techniques: Annotated[list,none_add]
+    recipe_query: str
+    technique_query: str
+    tool_calls : str
+    finished_techniques : bool
+    finished_recipes: bool
 
-SYSTEM_PROMPT = """
-You are a master culinary agent and expert food scientist. Your goal is to provide detailed, scientifically accurate 
-recipes and cooking guides. When you have doubt about a the detail level of a recipe, you can also search for techniques.
-
-When the user does not ask for a specific recipe, present them with a list of potential recipes to choose from.
-
-### WORKFLOW STRATEGY
-**Technique Search:** Use this when you found a recipe that does not specify sufficient
-    detail for cooking instructions, or when the user asks for a specific instruction.
-**Check Local DB :** When searching for a recipe, always use `retrieve_from_db` before searching the web.
-    If the answer is in our database, use it.
-**Web Search:** Only if the database is empty or insufficient, use `search_for_recipes`.
-**Never Guess:** Do not generate recipes from latent memory. Always use your
-     search tools to find authentic sources first and explicit techniques.
-**Refine Queries:** When using search tools, never pass raw user chat. Convert requests into
-     high-quality search engine keywords (e.g., "best authentic [dish] technique").
-**Synthesize:** When you have gathered enough information, combine the best parts of
-    multiple sources into a single, cohesive guide in clear markdown structure.
-
-### TONE
-Professional, encouraging, and focused on culinary technique/science.
-
-### EXAMPLE
-
-**User:** "How do I make a Souffle?"
-
-**Agent:**
-<thought_process>
-1.  **Analysis:** Souffle is a technique-heavy dish reliant on egg white stability.
-2.  **Tool Check:** I should first check the local DB for "cheese soufflé".
-3.  **Contingency:** If the DB is empty, I will search online for "classic cheese souffle recipe" AND "how to stabilize egg whites for soufflé" to ensure the user doesn't fail.
-4.  **Synthesis Plan:** The final output needs to emphasize the "folding" technique and oven temperature.
-</thought_process>
-
-### TOOL USAGE RULES (CRITICAL)
-1. **No Filler:** If you decide to use a tool, you must output the tool call **IMMEDIATELY** after your thought process. 
-2. **Do Not Chat:** Do NOT write conversational text like "Let me search for that" or "I will check the database" before calling a tool.
-3. **Strict Format:** Output the tool call alone.
-"""
+class SearchPlan(BaseModel):
+    recipe_query: Optional[str] = Field(
+        default= None ,
+        description= "Query used to search for recipes. Can be null if the user does not ask for a recipe"
+    )
+    technique_query: Optional[str] = Field(
+        default= None ,
+        description= "Query used to search for recipes. Can be null if the user does" \
+        "not ask for a specific recipe or only about ingredients"
+    )
 
 
+class Techniques(BaseModel):
+    techniques : Optional[list[str]] = Field(
+        default= None,
+        description= "The techniques found so far. Can be none if no techniqes are needed"
+    )
+    technique_query : Optional[str] = Field(
+        default= None,
+        description= "Query to search for techniqes. If the given techniques are sufficient, " \
+        "this field can be null (no more search is needed)"
+    )
+
+
+
+def load_agent_config(agent_name, yaml_path="agents.yaml"):
+    with open(yaml_path, "r") as f:
+        config = yaml.safe_load(f)
+
+    agent_cfg = config["agents"].get(agent_name)
+    if not agent_cfg:
+        raise ValueError(f"Agent {agent_name} not found in YAML")
+
+    return agent_cfg
 
 class CookingAgent():
     def __init__(self, tools):
         # Initialize LLM
-        llm = init_chat_model(
-            "gemini-2.5-flash",
-            model_provider="google_genai"
+        self.base_llm = init_chat_model(
+           # "qwen/qwen3-32b",
+            "llama-3.3-70b-versatile",
+            model_provider="groq",
         )
-        self.llm = llm.bind_tools(tools)
+
         self.tools_map = {t.name: t for t in tools}
 
-        graph_builder = StateGraph(State)
-        graph_builder.add_node("cooking_agent", self.llm_call)
-        graph_builder.add_node("tool_executor", self.tool_executor)
+        self.planner_llm, self.planner_prompt = self.get_planner_llm(self.base_llm)
+        self.technique_llm, self.techniqe_refiner_prompt = self.get_technique_refiner_llm(self.base_llm)
+        self.recipe_llm, self.recipe_prompt = self.get_recipe_refiner_llm(self.base_llm)
+        self.writer_prompt = load_agent_config("writer")["system_prompt"]
 
-        graph_builder.add_edge(START, "cooking_agent")
+
+        self.graph = self.build_graph()
+        self.graph.get_graph().draw_mermaid_png(output_file_path="agent.png")
+
+
+    def get_planner_llm(self,base_llm):
+
+        planner_cfg = load_agent_config("planner")
+        planner_llm = base_llm.with_structured_output(SearchPlan)
+        planner_prompt = planner_cfg["system_prompt"]
+        return planner_llm, planner_prompt
+    
+    def get_technique_refiner_llm(self,base_llm):
+        technique_cfg = load_agent_config("technique_refiner")
+        technique_llm = base_llm.with_structured_output(Techniques)
+        techniques_refiner_prompt = technique_cfg["system_prompt"]
+        return technique_llm, techniques_refiner_prompt
+
+    def get_recipe_refiner_llm(self,base_llm):
+
+        recipe_config = load_agent_config("recipe_refiner")
+        recipe_prompt = recipe_config["system_prompt"]
+        recipe_tools = [self.tools_map[t] for t in recipe_config["tools"]]
+        recipe_llm = base_llm.bind_tools(recipe_tools)
+        return recipe_llm, recipe_prompt
+
+    def build_graph(self):
+        graph_builder = StateGraph(State)
+        graph_builder.add_node("planner", self.planner)
+        graph_builder.add_node("technique_search", self.technique_search)
+        graph_builder.add_node("technique_refiner", self.techniqe_refiner)
+        graph_builder.add_node("recipe_refiner", self.recipe_refiner)
+        graph_builder.add_node("tool_executor", self.tool_executor)
+        graph_builder.add_node("database_search", self.database_search)
+        graph_builder.add_node("writer", self.writer)
+        graph_builder.add_node("aggregator", self.aggregator)
+
+        graph_builder.add_edge(START, "planner")
         graph_builder.add_conditional_edges(
-            "cooking_agent",
-            self.should_continue,
+            "planner",
+            self.should_start_recipes,
             {
-                "ACTION": "tool_executor",
-                END: END
+                "Search DB": "database_search",
+                "Writer": "writer",
+                END : END
             }
         )
-        graph_builder.add_edge("tool_executor", "cooking_agent")
+
+        graph_builder.add_edge("database_search", "recipe_refiner")
+
+        graph_builder.add_conditional_edges(
+            "recipe_refiner",
+            self.should_continue_recipes,
+            {
+                "Search Again": "tool_executor",
+                "Finish Recipe": "aggregator"
+               
+            }
+           
+        )
+        graph_builder.add_edge("tool_executor", "recipe_refiner")
+        graph_builder.add_conditional_edges(
+            "planner",
+            self.should_continue_techniques,
+            {
+                "Search Technique": "technique_search",
+                "Writer": "writer",
+                "Finish Recipe": "aggregator",
+                END : END
+              
+            },
+
+        )
+
+        graph_builder.add_conditional_edges(
+            "aggregator",
+            self.should_start_writing,
+            {
+                END: END,
+                "Write" : "writer"
+            }
+        )
+
+        graph_builder.add_edge("technique_search", "technique_refiner")
+
+        graph_builder.add_conditional_edges(
+            "technique_refiner",
+            self.should_continue_techniques,
+            {
+                "Search Technique": "technique_search",
+                "Finish Recipe": "aggregator"
+            }
+        )
+
+        graph_builder.add_edge("writer", END)
+
 
         memory_saver = MemorySaver()
-        self.graph = graph_builder.compile(checkpointer=memory_saver)
+        graph = graph_builder.compile(checkpointer=memory_saver)
+        return graph
 
     def get_clean_content(self,message):
         '''
@@ -109,65 +199,166 @@ class CookingAgent():
         ).strip()
 
         return clean_text
+    
 
-    async def llm_call(self, state: State):
+
+    async def planner(self,state:State):
         """
-        Main Agent Node: Decides whether to act or answer.
+        Subagent that plans recipe creation
         """
+        messages = [SystemMessage(content=self.planner_prompt)] + state["messages"]
 
-        current_scratchpad = state.get("scratchpad", [])
-        if current_scratchpad is None:
-            current_scratchpad = []
+        response = await self.planner_llm.ainvoke(messages)
 
-        messages = [SystemMessage(content=SYSTEM_PROMPT)] + state["messages"] + current_scratchpad
+        finished_recipes = response.recipe_query is None
+        finished_techniques = response.technique_query is None
+        return {
+            "messages": state["messages"],
+            "recipe_query": response.recipe_query,
+            "technique_query": response.technique_query,
+            "finished_recipes": finished_recipes,
+            "finished_techniques": finished_techniques
+        }
+    
 
-        response = await self.llm.ainvoke(messages)
-        # CASE A: The agent wants to use a Tool
+
+    async def technique_search(self,state:State):
+        """
+        Tool Node to search for Techniques
+        """
+        tool = self.tools_map["search_for_techniques"]
+        technique_query = state.get("technique_query", None)
+
+        tool_output = await tool.ainvoke({"query": technique_query})
+
+        return {"techniques":  [str(tool_output)]}
+
+
+    async def techniqe_refiner(self,state:State):
+
+        messages = [SystemMessage(content=self.techniqe_refiner_prompt)]
+
+        response = await self.technique_llm.ainvoke(messages)
+
+        finished_techniques =  response.technique_query is None
+
+        return {
+            "techniques" :  response.techniques,
+            "technique_query" : response.technique_query,
+            "finished_techniques": finished_techniques
+        }
+
+
+    async def database_search(self, state:State):
+
+        tool = self.tools_map["retrieve_from_db"]
+        recipe_query = state.get("recipe_query", None)
+        if recipe_query == None:
+            return state
+        tool_output = await tool.ainvoke({"query": recipe_query})
+        return {"recipes":  [str(tool_output)]}
+    
+
+    async def recipe_refiner(self,state:State):
+
+        current_recipes = state.get("recipes")
+        
+        current_tool_calls = state.get("tool_calls", [])
+  
+        messages = [SystemMessage(content=self.recipe_prompt + str(current_recipes) + "PAST TOOL CALLS" + str(current_tool_calls))]
+
+        response = await self.recipe_llm.ainvoke(messages)
+        
+
         if response.tool_calls:
-            return {"scratchpad": current_scratchpad + [response]}
-
-        # CASE B: The agent is ready to answer the user (Final Output)
+            return {
+                "tool_calls" : current_tool_calls + [response],
+            }
         else:
             # 1. Clean the output: Remove <thought_process> tags
             clean_content = self.get_clean_content(response)
             return {
-                "messages": [AIMessage(content=clean_content)],
-                "scratchpad": [] 
+                "recipes" :  [clean_content],
+                "recipe_query" : None,
+                "tool_calls" : None,
+                "finished_recipes": True
             }
+        
+    async def aggregator(self, state:State):
+        """
+        Aggregator dummy node to check if both paths are finished.
+        """
+        return {}
+
+    async def should_start_recipes(self,state:State):
+
+        finished_recipes= state.get("finished_recipes")
+        finished_techniques= state.get("finished_techniques")
+    
+        # Both are empty (User said "Hello") -> Go to Writer to chat
+        if finished_recipes and finished_techniques:
+            return "Writer"
+        elif finished_recipes:
+            return END
+        return "Search DB"
+
+
+    async def should_start_writing(self,state:State):
+
+        finished_recipes = state.get("finished_recipes")
+        finished_techniques = state.get("finished_techniques")
+
+        if finished_recipes and finished_techniques:
+            return "Write"
+        else:
+            return END
+
+    async def should_continue_recipes(self,state:State):
+
+        tool_called = state.get("tool_calls", [])
+        if tool_called is not None and len(tool_called) >= 2:
+            return "Finish Recipe"
+        if tool_called == None:
+            return "Finish Recipe"
+        else:
+            return "Search Again"
+
+    async def should_continue_techniques(self,state:State):
+
+        if state["finished_techniques"] is True:
+            return "Finish Recipe"
+        else :
+            return "Search Technique"
+
 
     async def tool_executor(self, state: State):
         """
         Executes tools and adds output to Short-Term Scratchpad.
         """
-        current_scratchpad = state.get("scratchpad", [])
-        last_message = current_scratchpad[-1]
-
+        current_tools = state.get("tool_calls", [])
+        last_message = current_tools[-1]
         tool_outputs = []
 
         for tool_call in last_message.tool_calls:
             tool = self.tools_map[tool_call["name"]]
             tool_output = await tool.ainvoke(tool_call["args"])
             # Create a ToolMessage
-            tool_outputs.append(
-                ToolMessage(
-                    content=str(tool_output),
-                    tool_call_id=tool_call["id"],
-                    name=tool_call["name"]
-                )
-            )
-        return {"scratchpad": current_scratchpad + tool_outputs}
+            tool_outputs.append(str(tool_output))
+        return {"recipes":  tool_outputs}
 
-    def should_continue(self, state: State):
+    async def writer(self,state:State):
         """
-        Routes the graph based on the scratchpad's last message.
+        Subagent that plans recipe creation
         """
-        current_scratchpad = state.get("scratchpad", [])
-        # If we just cleared the scratchpad (empty), it means we finished.
-        if not current_scratchpad:
-            return END
+        messages = [SystemMessage(content=self.writer_prompt)] + state["messages"]
 
-        last_message = current_scratchpad[-1]
-        # If the last message in the scratchpad has tool calls, go to executor
-        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-            return "ACTION"
-        return END
+        response = await self.base_llm.ainvoke(messages)
+        message = AIMessage(content=response.content)
+        return {
+            "messages": state["messages"] + [message],
+            "recipe_query": None,
+            "technique_query": None,
+            "recipes": None,
+            "techniques": None,
+            "tool_calls": None,
+        }
