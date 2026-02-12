@@ -15,7 +15,7 @@ db = chromadb.PersistentClient(
 
 
 client = init_chat_model(
-    "llama-3.1-8b-instant",
+    "qwen/qwen3-32b",
     model_provider="groq",
     max_tokens = 1000
 )

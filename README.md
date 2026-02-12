@@ -13,7 +13,21 @@ For this third iteration, I implemented the agentic logic in LangGraph and added
 
 In the next iteration, I will deploy the agent to cloud alognside proper session management for multiple users.
 
+## Agent Workflow
+
+![alt text](agent.png "Agent Graph")
+
+
+
+The **CookingAgent** orchestrates a **LangGraph** workflow to execute fan-out research streams before synthesizing a final response.
+
+1.  **Planning Phase**: The `planner` node decomposes requests into parallel `Recipe` (ingredients) and/or `Technique` (science) queries.
+2.  **Recipe Track**: Prioritizes local data via `database_search`. The `recipe_refiner` only triggers online searches via `tool_executor` if strictly necessary.
+3.  **Technique Track**: Concurrently runs `technique_search` to gather "how-to" principles, looping through `technique_refiner` for depth.
+4.  **Synthesis**: Once the `aggregator` confirms completion, the `writer` node (persona: "Pocket Gordon Ramsay") compiles the research into a master-class guide.
 ## Features
+
+
 
 **Agentic Workflow**: Main Agent that takes decisions based on gathered data.
 
@@ -31,9 +45,7 @@ In the next iteration, I will deploy the agent to cloud alognside proper session
 
 ## Tech Stack
 
-**LLM**: Google Gemini 2.5 Flash
-
-**MCP Server**: FastMCP
+LLM: llama-3.1 70B-Versatile and Qwen3-32B
 
 **Search** DuckDuckGo Search (duckduckgo_search)
 
